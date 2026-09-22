@@ -218,15 +218,52 @@ def draw_outputs(output: Path, results: pd.DataFrame, holdout_predictions: pd.Da
         ax.tick_params(axis="x", rotation=30)
         fig.tight_layout(); fig.savefig(output / name, dpi=180); plt.close(fig)
     sample = holdout_predictions.head(500)
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.plot(sample["exit_time"], sample["actual_pips"], label="Actual", alpha=.75)
-    ax.plot(sample["exit_time"], sample["predicted_pips"], label="LSTM", alpha=.75)
-    ax.set(title="USDJPY: predicted and actual 60-minute move", ylabel="pips")
-    ax.legend(); fig.tight_layout(); fig.savefig(output / "prediction_example.png", dpi=180); plt.close(fig)
+    fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True)
+    axes[0].plot(sample["exit_time"], sample["actual_pips"], color="#2F6BBD")
+    axes[0].set(title="Actual 60-minute move", ylabel="actual pips")
+    axes[1].plot(sample["exit_time"], sample["predicted_pips"], color="#E28E2C")
+    axes[1].set(title="LSTM prediction (enlarged vertical scale)", ylabel="predicted pips", xlabel="target time")
+    for axis in axes:
+        axis.axhline(0, color="#777777", linewidth=.8)
+    fig.tight_layout(); fig.savefig(output / "prediction_example_zoomed.png", dpi=180); plt.close(fig)
     fig, ax = plt.subplots(figsize=(11, 5))
     ax.plot(trades["exit_time"], trades["equity_pips"])
     ax.set(title="Untouched holdout: cumulative pips after bid/ask cost", ylabel="pips")
     fig.tight_layout(); fig.savefig(output / "holdout_equity.png", dpi=180); plt.close(fig)
+
+
+def draw_wfo_outputs(
+    output: Path,
+    results: pd.DataFrame,
+    holdout_predictions: pd.DataFrame,
+    trades: pd.DataFrame,
+    wfo_summary: pd.DataFrame,
+) -> None:
+    colors = ["#1B9E77" if value > 0 else "#D95F5F" for value in wfo_summary["total_pips"]]
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7))
+    axes[0].bar(wfo_summary["fold"], wfo_summary["total_pips"], color=colors)
+    axes[0].axhline(0, color="#333333", linewidth=.8)
+    axes[0].set(title="Walk-forward pips by fold", ylabel="pips")
+    axes[1].plot(wfo_summary["fold"], wfo_summary["directional_accuracy"] * 100, marker="o")
+    axes[1].axhline(50, color="#777777", linestyle="--", linewidth=.8)
+    axes[1].set(title="Walk-forward directional accuracy", xlabel="fold", ylabel="accuracy (%)")
+    fig.tight_layout(); fig.savefig(output / "wfo_results.png", dpi=180); plt.close(fig)
+
+    sample = holdout_predictions.head(500)
+    feature = results[results["family"] == "feature"]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    prediction_axis = axes[0, 0].twinx()
+    axes[0, 0].plot(sample["exit_time"], sample["actual_pips"], color="#2F6BBD", label="Actual")
+    prediction_axis.plot(sample["exit_time"], sample["predicted_pips"], color="#E28E2C", label="LSTM")
+    axes[0, 0].set_title("Actual and prediction (separate scales)")
+    axes[0, 1].barh(feature["name"], feature["directional_accuracy"] * 100)
+    axes[0, 1].set(title="Accuracy by feature set", xlabel="accuracy (%)")
+    axes[1, 0].plot(trades["exit_time"], trades["equity_pips"], color="#7A5195")
+    axes[1, 0].set(title="Holdout cumulative pips", ylabel="pips")
+    axes[1, 1].bar(wfo_summary["fold"], wfo_summary["total_pips"], color=colors)
+    axes[1, 1].axhline(0, color="#333333", linewidth=.8)
+    axes[1, 1].set(title="Walk-forward pips", xlabel="fold", ylabel="pips")
+    fig.tight_layout(); fig.savefig(output / "generated_graph_examples.png", dpi=180); plt.close(fig)
 
 
 def run_walk_forward(
@@ -349,6 +386,7 @@ def main() -> None:
     wfo_summary, wfo_trades = run_walk_forward(frames[5], args, device, seeds[0])
     wfo_summary.to_csv(output / "wfo_fold_summary.csv", index=False)
     wfo_trades.to_csv(output / "wfo_trades.csv", index=False)
+    draw_wfo_outputs(output, results, baseline_predictions, baseline_trades, wfo_summary)
     audit = pd.DataFrame({
         "item": ["source_files", "source_sha256", "rows", "first_timestamp", "last_timestamp", "duplicate_timestamps"],
         "value": [raw.attrs["files"], raw.attrs["sha256"], len(raw), raw["timestamp"].min(), raw["timestamp"].max(), raw["timestamp"].duplicated().sum()],

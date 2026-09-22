@@ -137,7 +137,10 @@ python scripts/05_run_full_study.py `
 
 The output includes CSV tables, every holdout prediction, a bid/ask-aware trade
 simulation, high-resolution PNG charts, an Excel workbook and a JSON manifest
-containing the source-data hash. Missing bars are not interpolated.
+containing the source-data hash. Missing bars are not interpolated. The generated
+figures include input-length, horizon and feature comparisons, a readable
+two-panel actual-versus-prediction example, holdout equity, walk-forward results
+and a four-panel gallery (`generated_graph_examples.png`).
 
 ## Evaluation policy
 
