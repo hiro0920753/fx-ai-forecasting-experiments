@@ -66,7 +66,13 @@ def main() -> None:
             device=device,
         )
         test_scaled = scale(test, fitted.mean, fitted.std)
-        prediction = predict(fitted.model, test_scaled, device)
+        prediction = predict(
+            fitted.model,
+            test_scaled,
+            device,
+            fitted.target_mean,
+            fitted.target_std,
+        )
         fold_metrics = regression_metrics(test.y, prediction)
         summaries.append(
             {

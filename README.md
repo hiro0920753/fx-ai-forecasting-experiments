@@ -119,6 +119,26 @@ timestamp,open,high,low,close
 Rows are sorted by timestamp. Duplicate timestamps and invalid close prices are
 rejected rather than silently repaired.
 
+## Complete USDJPY study
+
+`scripts/05_run_full_study.py` reproduces all comparison tables and figures from
+monthly Dukascopy M5 files. It derives M15 from the same M5 source, keeps 2025
+onward as an untouched holdout, and evaluates feature sets, prediction horizons,
+input lengths and timeframes under one chronological protocol.
+
+```powershell
+python scripts/05_run_full_study.py `
+  --data-dir data/dukascopy/USDJPY/M5 `
+  --output artifacts/full_study `
+  --holdout-start 2025-01-01 `
+  --epochs 20 `
+  --seeds 42,43,44
+```
+
+The output includes CSV tables, every holdout prediction, a bid/ask-aware trade
+simulation, high-resolution PNG charts, an Excel workbook and a JSON manifest
+containing the source-data hash. Missing bars are not interpolated.
+
 ## Evaluation policy
 
 - Preprocessing statistics are fitted on training data only.

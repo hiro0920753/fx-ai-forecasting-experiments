@@ -17,6 +17,8 @@ class FittedModel:
     model: LSTMRegressor
     mean: np.ndarray
     std: np.ndarray
+    target_mean: float
+    target_std: float
     best_validation_mse: float
     epochs_run: int
 
@@ -52,13 +54,19 @@ def make_loader(data: SequenceData, batch_size: int, shuffle: bool) -> DataLoade
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 
-def predict(model: nn.Module, data: SequenceData, device: torch.device) -> np.ndarray:
+def predict(
+    model: nn.Module,
+    data: SequenceData,
+    device: torch.device,
+    target_mean: float = 0.0,
+    target_std: float = 1.0,
+) -> np.ndarray:
     model.eval()
     values: list[np.ndarray] = []
     with torch.no_grad():
         for x, _ in make_loader(data, 2048, False):
             values.append(model(x.to(device)).cpu().numpy())
-    return np.concatenate(values)
+    return np.concatenate(values) * target_std + target_mean
 
 
 def fit_lstm(
@@ -81,7 +89,20 @@ def fit_lstm(
     train_scaled = scale(train, mean, std)
     valid_scaled = scale(valid, mean, std)
 
-    model = LSTMRegressor(hidden_size=hidden_size).to(device)
+    target_mean = float(train.y.mean())
+    target_std = float(train.y.std())
+    if target_std < 1e-8:
+        target_std = 1.0
+    train_target = ((train.y - target_mean) / target_std).astype(np.float32)
+    valid_target = ((valid.y - target_mean) / target_std).astype(np.float32)
+    train_scaled = SequenceData(
+        train_scaled.x, train_target, train_scaled.current, train_scaled.timestamps
+    )
+    valid_scaled = SequenceData(
+        valid_scaled.x, valid_target, valid_scaled.current, valid_scaled.timestamps
+    )
+
+    model = LSTMRegressor(hidden_size=hidden_size, input_size=train.x.shape[-1]).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     loss_function = nn.MSELoss()
     best_loss = float("inf")
@@ -97,7 +118,7 @@ def fit_lstm(
             loss.backward()
             optimizer.step()
         validation_prediction = predict(model, valid_scaled, device)
-        validation_loss = float(np.mean((validation_prediction - valid.y) ** 2))
+        validation_loss = float(np.mean((validation_prediction - valid_target) ** 2))
         epochs_run = epoch + 1
         print(f"epoch={epochs_run} validation_mse={validation_loss:.8f}")
         if validation_loss < best_loss:
@@ -114,7 +135,7 @@ def fit_lstm(
     if best_state is None:
         raise RuntimeError("Training did not produce a model")
     model.load_state_dict(best_state)
-    return FittedModel(model, mean, std, best_loss, epochs_run)
+    return FittedModel(model, mean, std, target_mean, target_std, best_loss, epochs_run)
 
 
 def regression_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:

@@ -5,11 +5,17 @@ from torch import nn
 
 
 class LSTMRegressor(nn.Module):
-    def __init__(self, hidden_size: int = 32, num_layers: int = 1, dropout: float = 0.0):
+    def __init__(
+        self,
+        hidden_size: int = 32,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+        input_size: int = 1,
+    ):
         super().__init__()
         effective_dropout = dropout if num_layers > 1 else 0.0
         self.encoder = nn.LSTM(
-            input_size=1,
+            input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=effective_dropout,
