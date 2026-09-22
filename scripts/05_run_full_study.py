@@ -53,6 +53,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--seeds", default="42,43,44")
     parser.add_argument("--quick", action="store_true", help="One seed and fewer epochs")
+    parser.add_argument("--wfo-only", action="store_true", help="Resume only the WFO stage")
     return parser.parse_args()
 
 
@@ -239,7 +240,9 @@ def run_walk_forward(
     data, meta = make_data(frame, condition)
     times = pd.to_datetime(data.timestamps, utc=True)
     fold_rows, all_trades = [], []
-    for test_start in pd.date_range("2024-01-01", times.max(), freq="QS", tz="UTC"):
+    first_fold = pd.Timestamp("2024-01-01", tz="UTC")
+    last_fold = pd.Timestamp(times.max()).tz_convert("UTC")
+    for test_start in pd.date_range(first_fold, last_fold, freq="QS"):
         test_end = test_start + pd.DateOffset(months=3)
         development = times < test_start
         testing = (times >= test_start) & (times < test_end)
@@ -283,6 +286,12 @@ def main() -> None:
     raw = load_monthly(Path(args.data_dir))
     frames = {minutes: add_features(resample(raw, minutes)) for minutes in (5, 15)}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.wfo_only:
+        wfo_summary, wfo_trades = run_walk_forward(frames[5], args, device, seeds[0])
+        wfo_summary.to_csv(output / "wfo_fold_summary.csv", index=False)
+        wfo_trades.to_csv(output / "wfo_trades.csv", index=False)
+        print(wfo_summary.to_string(index=False))
+        return
     rows, prediction_tables = [], []
     baseline_trades = None
     baseline_predictions = None
