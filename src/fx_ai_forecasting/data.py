@@ -43,7 +43,22 @@ def load_prices(
     result = frame[[time_name, close_name]].rename(
         columns={time_name: "timestamp", close_name: "close"}
     )
-    result["timestamp"] = pd.to_datetime(result["timestamp"], errors="raise", utc=True)
+    timestamp_values = result["timestamp"]
+    if pd.api.types.is_numeric_dtype(timestamp_values):
+        median_magnitude = float(np.nanmedian(np.abs(timestamp_values.to_numpy(dtype=float))))
+        if median_magnitude >= 1e17:
+            unit = "ns"
+        elif median_magnitude >= 1e14:
+            unit = "us"
+        elif median_magnitude >= 1e11:
+            unit = "ms"
+        else:
+            unit = "s"
+        result["timestamp"] = pd.to_datetime(
+            timestamp_values, unit=unit, errors="raise", utc=True
+        )
+    else:
+        result["timestamp"] = pd.to_datetime(timestamp_values, errors="raise", utc=True)
     result["close"] = pd.to_numeric(result["close"], errors="raise")
     result = result.sort_values("timestamp").reset_index(drop=True)
     if result["timestamp"].duplicated().any():

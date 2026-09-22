@@ -19,6 +19,7 @@ from .data import (
     make_sequences,
 )
 from .model import LSTMRegressor
+from .training import fit_lstm, predict as predict_fitted, scale
 
 
 def parse_args() -> argparse.Namespace:
@@ -87,50 +88,26 @@ def main() -> None:
         lookback, horizon = args.lookback, args.horizon
     train, valid, test = chronological_split(data)
 
-    mean = train.x.mean(axis=(0, 1), keepdims=True)
-    std = train.x.std(axis=(0, 1), keepdims=True)
-    std = np.where(std < 1e-8, 1.0, std)
-
-    def scaled(part: SequenceData) -> SequenceData:
-        return SequenceData(
-            x=((part.x - mean) / std).astype(np.float32),
-            y=part.y,
-            current=part.current,
-            timestamps=part.timestamps,
-        )
-
-    train_scaled, valid_scaled, test_scaled = map(scaled, (train, valid, test))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = LSTMRegressor(hidden_size=args.hidden_size).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-    loss_function = nn.MSELoss()
-    best_loss = float("inf")
-    best_state: dict[str, torch.Tensor] | None = None
-    stale_epochs = 0
-
-    for epoch in range(args.epochs):
-        model.train()
-        for x, y in loader(train_scaled, args.batch_size, True):
-            optimizer.zero_grad()
-            loss = loss_function(model(x.to(device)), y.to(device))
-            loss.backward()
-            optimizer.step()
-        valid_prediction = predict(model, valid_scaled, device)
-        valid_loss = float(np.mean((valid_prediction - valid.y) ** 2))
-        print(f"epoch={epoch + 1} validation_mse={valid_loss:.8f}")
-        if valid_loss < best_loss:
-            best_loss = valid_loss
-            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
-            stale_epochs = 0
-        else:
-            stale_epochs += 1
-            if stale_epochs >= args.patience:
-                break
-
-    if best_state is None:
-        raise RuntimeError("Training did not produce a model")
-    model.load_state_dict(best_state)
-    prediction = predict(model, test_scaled, device)
+    fitted = fit_lstm(
+        train,
+        valid,
+        hidden_size=args.hidden_size,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        patience=args.patience,
+        seed=args.seed,
+        device=device,
+    )
+    test_scaled = scale(test, fitted.mean, fitted.std)
+    prediction = predict_fitted(
+        fitted.model,
+        test_scaled,
+        device,
+        fitted.target_mean,
+        fitted.target_std,
+    )
     random_walk = np.zeros_like(test.y)
     moving_average = test.x[:, -min(lookback, 12) :, 0].mean(axis=1) * horizon
     results = {
@@ -155,7 +132,7 @@ def main() -> None:
             "moving_average_log_return": moving_average,
         }
     ).to_csv(output / "predictions.csv", index=False)
-    torch.save(best_state, output / "model.pt")
+    torch.save(fitted.model.state_dict(), output / "model.pt")
     print(json.dumps(results, indent=2))
 
 
