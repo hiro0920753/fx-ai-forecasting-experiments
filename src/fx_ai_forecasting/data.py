@@ -80,6 +80,21 @@ def make_sequences(frame: pd.DataFrame, lookback: int, horizon: int) -> Sequence
     return SequenceData(x=x, y=y, current=current, timestamps=timestamps)
 
 
+def load_sequence_dataset(path: str | Path) -> tuple[SequenceData, int, int]:
+    archive = np.load(path)
+    required = {"x", "y", "current", "timestamps", "lookback", "horizon"}
+    missing = required.difference(archive.files)
+    if missing:
+        raise ValueError(f"Dataset is missing arrays: {', '.join(sorted(missing))}")
+    data = SequenceData(
+        x=archive["x"].astype(np.float32),
+        y=archive["y"].astype(np.float32),
+        current=archive["current"].astype(np.float64),
+        timestamps=archive["timestamps"].astype("datetime64[ns]"),
+    )
+    return data, int(archive["lookback"]), int(archive["horizon"])
+
+
 def chronological_split(
     data: SequenceData,
     train_ratio: float = 0.70,

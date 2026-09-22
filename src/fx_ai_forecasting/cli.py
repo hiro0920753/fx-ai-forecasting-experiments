@@ -11,13 +11,21 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from .data import SequenceData, chronological_split, load_prices, make_sequences
+from .data import (
+    SequenceData,
+    chronological_split,
+    load_prices,
+    load_sequence_dataset,
+    make_sequences,
+)
 from .model import LSTMRegressor
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a chronological FX forecasting experiment")
-    parser.add_argument("--csv", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--dataset", help="NPZ created by scripts/01_prepare_dataset.py")
+    source.add_argument("--csv", help="Read a CSV and create sequences in memory")
     parser.add_argument("--timestamp-column")
     parser.add_argument("--close-column")
     parser.add_argument("--lookback", type=int, default=288)
@@ -71,8 +79,12 @@ def main() -> None:
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
 
-    frame = load_prices(args.csv, args.timestamp_column, args.close_column)
-    data = make_sequences(frame, args.lookback, args.horizon)
+    if args.dataset:
+        data, lookback, horizon = load_sequence_dataset(args.dataset)
+    else:
+        frame = load_prices(args.csv, args.timestamp_column, args.close_column)
+        data = make_sequences(frame, args.lookback, args.horizon)
+        lookback, horizon = args.lookback, args.horizon
     train, valid, test = chronological_split(data)
 
     mean = train.x.mean(axis=(0, 1), keepdims=True)
@@ -120,12 +132,12 @@ def main() -> None:
     model.load_state_dict(best_state)
     prediction = predict(model, test_scaled, device)
     random_walk = np.zeros_like(test.y)
-    moving_average = test.x[:, -min(args.lookback, 12) :, 0].mean(axis=1) * args.horizon
+    moving_average = test.x[:, -min(lookback, 12) :, 0].mean(axis=1) * horizon
     results = {
         "samples": {"train": len(train.y), "validation": len(valid.y), "test": len(test.y)},
         "configuration": {
-            "lookback": args.lookback,
-            "horizon": args.horizon,
+            "lookback": lookback,
+            "horizon": horizon,
             "seed": args.seed,
             "device": str(device),
         },

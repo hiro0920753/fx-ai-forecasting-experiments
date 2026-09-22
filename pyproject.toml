@@ -10,16 +10,15 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
+  "matplotlib>=3.8",
   "numpy>=1.26",
+  "openpyxl>=3.1",
   "pandas>=2.1",
   "torch>=2.2",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
-
-[project.scripts]
-fx-forecast = "fx_ai_forecasting.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
